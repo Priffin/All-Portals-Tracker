@@ -43,7 +43,6 @@ class StrongholdTracker:
             **{f'ring{i}': '' for i in range(1, 9)}
         }
 
-        # Setup routes and socket events
         self.setup_routes()
         self.setup_socket_events()
 
