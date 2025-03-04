@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>All Portals Tracker</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="icon" href="https://minecraft.wiki/images/thumb/Eye_of_Ender_JE2_BE2.png/150px-Eye_of_Ender_JE2_BE2.png?3e29b" type="image/png">
+    <style>
+        /* CSS Variables for consistent theming */
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2c3e50;
+            --accent-color: #e74c3c;
+            --light-color: #ecf0f1;
+        }
+
+        /* Basic reset and full viewport setup */
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            overflow: hidden; /* Prevent scrollbars on main viewport */
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, var(--secondary-color), #34495e); /* Gradient background */
+            color: var(--light-color);
+            display: flex;
+            justify-content: center;
+            align-items: center; /* Center content vertically and horizontally */
+            font-size: calc(14px + 0.5vw); /* Responsive font size */
+        }
+
+        /* Main container for the dashboard */
+        .container {
+            width: 95vw;
+            height: 95vh;
+            max-width: 1200px; /* Maximum width for larger screens */
+            background-color: rgba(255, 255, 255, 0.1); /* Semi-transparent white background */
+            backdrop-filter: blur(10px); /* Apply blur to background */
+            border-radius: 1.5vw;
+            padding: 3vh;
+            box-shadow: 0 1vh 3vh rgba(0, 0, 0, 0.3); /* Shadow for depth */
+            display: flex;
+            flex-direction: column; /* Stack elements vertically */
+            align-items: center; /* Center items horizontally in container */
+            box-sizing: border-box; /* Include padding and border in element's total width and height */
+            overflow: hidden; /* Prevent content from overflowing container */
+        }
+
+        /* Title styling */
+        h1 {
+            font-size: 6vh;
+            text-align: center;
+            margin-bottom: 4vh;
+            color: var(--light-color);
+            position: relative; /* For pseudo-element underline */
+        }
+
+        /* Eye of Ender icon in title */
+        h1 img {
+            height: 6.5vh;
+            margin-right: 1vw;
+            vertical-align: middle;
+            margin-bottom: 1.6vh; /* Adjust for vertical alignment with text */
+        }
+
+        /* Underline for the title using pseudo-element */
+        h1:after {
+            content: '';
+            position: absolute;
+            bottom: -1vh;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 10vw;
+            height: 0.5vh;
+            border-radius: 0.25vh;
+        }
+
+        /* Main content area - grid and graph containers */
+        .content-area {
+            display: flex;
+            width: 100%;
+            height: 90%;
+            justify-content: space-between; /* Space out number grid and graph */
+            overflow: hidden;
+        }
+
+        /* Grid container for number cards */
+        .numbers-grid {
+            display: grid;
+            grid-template-columns: repeat(1, 1fr); /* Single column grid */
+            gap: 3vh;
+            width: 48%;
+            height: 90%;
+            overflow-y: auto; /* Enable vertical scrolling if cards overflow */
+        }
+
+        /* Styling for individual number cards */
+        .number-card {
+            background-color: rgba(255, 255, 255, 0.05);
+            border-radius: 1vh;
+            padding: 3vh;
+            text-align: center;
+            box-shadow: 0 0.5vh 1.5vh rgba(0, 0, 0, 0.2); /* Subtle shadow */
+            transition: all 0.3s ease; /* Smooth transition for hover effect */
+            position: relative;
+            overflow: hidden; /* Clip any overflowing content */
+        }
+
+        /* Hover effect for number cards */
+        .number-card:hover {
+            transform: translateY(-0.5vh); /* Move card up slightly */
+            box-shadow: 0 1.5vh 3vh rgba(0, 0, 0, 0.3); /* More pronounced shadow on hover */
+        }
+
+        /* Colored left borders for the first three number cards */
+        .number-card:nth-child(1) {
+            border-left: 0.4vw solid var(--primary-color); /* Primary color for first card */
+        }
+
+        .number-card:nth-child(2) {
+            border-left: 0.4vw solid #27ae60; /* Green color for second card */
+        }
+
+        .number-card:nth-child(3) {
+            border-left: 0.4vw solid var(--accent-color); /* Accent color for third card */
+        }
+
+        /* Heading within number cards */
+        .number-card h2 {
+            font-size: 3vh;
+            margin-bottom: 1vh;
+            color: var(--light-color);
+            text-align: center;
+            padding-top: 0;
+            margin-top: 0;
+        }
+
+        /* Value inside number cards */
+        .number-value {
+            font-size: 2.5vh;
+            color: white;
+            padding: 1vh;
+            transition: all 0.5s ease; /* Smooth transition for highlight effect */
+        }
+
+        /* Highlight effect for number values */
+        .number-value.highlight {
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 0.5vh;
+        }
+
+        /* Graph container */
+        .graph {
+            width: 48%;
+            height: 90%;
+            background-color: rgba(255, 255, 255, 0.05);
+            border-radius: 1vh;
+            box-shadow: 0 0.5vh 1.5vh rgba(0, 0, 0, 0.2);
+            display: flex;
+            justify-content: center;
+            align-items: center; /* Center graph content */
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+
+        /* Container for graph content or placeholder */
+        #graph-content, #table-content {
+            width: 90%;
+            height: 90%;
+            background-color: rgba(0, 0, 0, 0.2);
+            border-radius: 0.8vh;
+            text-align: center;
+            color: white;
+            font-size: 3vh;
+            display: none; /* Hidden by default, toggled by script */
+            justify-content: center;
+            align-items: center; /* Center placeholder text */
+            box-sizing: border-box;
+        }
+
+        /* Table content styling */
+        #table-content {
+            border-radius: 0; /* Remove border radius for table */
+            display: flex; /* Use flex to ensure proper height */
+            overflow: hidden; /* Prevent table overflow */
+            padding: 0;
+            margin: 0;
+        }
+
+        #table-content table {
+            width: 100%;
+            height: 100%;
+            border-collapse: collapse; /* Single border for table */
+            margin: 0;
+            table-layout: fixed; /* Fix table layout for text-overflow */
+        }
+
+        #table-content th, #table-content td {
+            border: 1px solid rgba(255, 255, 255, 0.2); /* Border for table cells */
+            padding: 1.2vh 1.5vw;
+            text-align: left;
+            white-space: nowrap; /* Prevent text wrapping */
+            overflow: hidden; /* Hide overflowing text */
+            text-overflow: ellipsis; /* Ellipsis for overflowing text */
+            box-sizing: border-box;
+        }
+
+        #table-content th {
+            background-color: rgba(255, 255, 255, 0.1);
+            font-weight: 600;
+        }
+
+        #table-content tr:nth-child(even) {
+            background-color: rgba(255, 255, 255, 0.05); /* Slightly different background for even rows */
+        }
+
+        #table-content td {
+            text-align: center; /* Center text in data cells */
+        }
+
+        /* Styling for stronghold count - larger and bold */
+        #stronghold_count {
+            font-size: 4vh;
+            font-weight: bold;
+        }
+
+        /* Mobile Styles - Media Query for screens less than 768px width */
+        @media (max-width: 768px) {
+            .container {
+                width: 100%; /* Full width on mobile */
+                height: 100%; /* Full height on mobile */
+                border-radius: 0; /* No rounded corners on mobile */
+                padding: 2vh; /* Adjust padding for mobile */
+                overflow-y: auto; /* Enable vertical scrolling for container */
+            }
+
+            .content-area {
+                flex-direction: column; /* Stack content area elements vertically on mobile */
+                height: auto; /* Auto height for content area on mobile */
+                overflow-y: auto; /* Enable vertical scrolling for content area */
+            }
+
+            .numbers-grid, .graph {
+                width: 100%; /* Full width for grid and graph on mobile */
+                height: auto; /* Auto height for grid and graph on mobile */
+                margin-bottom: 2vh; /* Margin between grid and graph on mobile */
+            }
+
+            .number-card {
+                margin-bottom: 2vh; /* Margin between number cards on mobile */
+            }
+
+            .graph {
+                height: 70vh; /* Fixed height for graph on mobile */
+                max-height: 500px; /* Maximum height for graph on mobile */
+            }
+
+            #graph-content, #table-content {
+                height: 100%; /* Full height for graph/table content on mobile */
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1><img src="https://minecraft.wiki/images/thumb/Eye_of_Ender_JE2_BE2.png/150px-Eye_of_Ender_JE2_BE2.png?3e29b" alt="Eye of Ender Icon">All Portals Tracker</h1>
+        <div class="content-area">
+            <div class="numbers-grid">
+                <div class="number-card">
+                    <h2>Next Stronghold</h2>
+                    <div id="coords" class="number-value">{{ values.coords }}</div>
+                    <div id="distance" class="number-value">{{ values.distance }}</div>
+                    <div id="angle" class="number-value">{{ values.angle }}</div>
+                </div>
+
+                <div class="number-card">
+                    <h2>Portals Filled</h2>
+                    <div id="stronghold_count" class="number-value">{{ values.stronghold_count }}</div>
+                </div>
+
+                <div class="number-card">
+                    <h2>Instructions</h2>
+                    <div id="instructions" class="number-value">{{ values.instructions }}</div>
+                </div>
+            </div>
+
+            <div class="graph">
+                <div id="graph-content" class="graph-content">
+                    <svg id="portal-graph" viewBox="-3100 -3100 6200 6200" preserveAspectRatio="xMidYMid meet">
+                        <g>
+                            <path d="M0,0 m-352,0 a352 352 0 0 1 704 0 a352 352 0 0 1 -704 0
+                                     M0,0 m-160,0 a160 160 0 0 0 320 0 a160 160 0 0 0 -320 0"
+                                  fill="rgba(52, 152, 219, 0.5)" />
+
+                            <path d="M0,0 m-736,0 a736 736 0 0 1 1472 0 a736 736 0 0 1 -1472 0
+                                     M0,0 m-544,0 a544 544 0 0 0 1088 0 a544 544 0 0 0 -1088 0"
+                                  fill="rgba(46, 204, 113, 0.5)" />
+
+                            <path d="M0,0 m-1120,0 a1120 1120 0 0 1 2240 0 a1120 1120 0 0 1 -2240 0
+                                     M0,0 m-928,0 a928 928 0 0 0 1856 0 a928 928 0 0 0 -1856 0"
+                                  fill="rgba(52, 152, 219, 0.5)" />
+
+                            <path d="M0,0 m-1504,0 a1504 1504 0 0 1 3008 0 a1504 1504 0 0 1 -3008 0
+                                     M0,0 m-1312,0 a1312 1312 0 0 0 2624 0 a1312 1312 0 0 0 -2624 0"
+                                  fill="rgba(46, 204, 113, 0.5)" />
+
+                            <path d="M0,0 m-1888,0 a1888 1888 0 0 1 3776 0 a1888 1888 0 0 1 -3776 0
+                                     M0,0 m-1696,0 a1696 1696 0 0 0 3392 0 a1696 1696 0 0 0 -3392 0"
+                                  fill="rgba(52, 152, 219, 0.5)" />
+
+                            <path d="M0,0 m-2272,0 a2272 2272 0 0 1 4544 0 a2272 2272 0 0 1 -4544 0
+                                     M0,0 m-2080,0 a2080 2080 0 0 0 4160 0 a2080 2080 0 0 0 -4160 0"
+                                  fill="rgba(46, 204, 113, 0.5)" />
+
+                            <path d="M0,0 m-2656,0 a2656 2656 0 0 1 5312 0 a2656 2656 0 0 1 -5312 0
+                                     M0,0 m-2464,0 a2464 2464 0 0 0 4928 0 a2464 2464 0 0 0 -4928 0"
+                                  fill="rgba(52, 152, 219, 0.5)" />
+
+                            <path d="M0,0 m-3040,0 a3040 3040 0 0 1 6080 0 a3040 3040 0 0 1 -6080 0
+                                     M0,0 m-2848,0 a2848 2848 0 0 0 5696 0 a2848 2848 0 0 0 -5696 0"
+                                  fill="rgba(46, 204, 113, 0.5)" />
+                        </g>
+
+                        <line x1="-3000" y1="0" x2="3000" y2="0" stroke="rgba(255,255,255,0.1)" stroke-width="10"/>
+                        <line x1="0" y1="-3000" x2="0" y2="3000" stroke="rgba(255,255,255,0.1)" stroke-width="10"/>
+
+                        <g id="points"></g>
+                    </svg>
+                </div>
+                <div id="table-content" class="table-content">
+                    <table>
+                        <tr>
+                          <td>Ring 1</td>
+                          <td id="ring1"></td>
+                        </tr>
+                        <tr>
+                          <td>Ring 2</td>
+                          <td id="ring2"></td>
+                        </tr>
+                        <tr>
+                          <td>Ring 3</td>
+                          <td id="ring3"></td>
+                        </tr>
+                        <tr>
+                          <td>Ring 4</td>
+                          <td id="ring4"></td>
+                        </tr>
+                        <tr>
+                          <td>Ring 5</td>
+                          <td id="ring5"></td>
+                        </tr>
+                          <tr>
+                          <td>Ring 6</td>
+                          <td id="ring6"></td>
+                        </tr>
+                          <tr>
+                          <td>Ring 7</td>
+                          <td id="ring7"></td>
+                        </tr>
+                          <tr>
+                          <td>Ring 8</td>
+                          <td id="ring8"></td>
+                        </tr>
+                      </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.4.1/socket.io.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize socket connection
+            const socket = io();
+            // Get SVG and points container elements
+            const svg = document.getElementById('portal-graph');
+            const pointsContainer = document.getElementById('points');
+
+            // Function to highlight a number value element
+            function highlightNumber(id) {
+                const element = document.getElementById(id);
+                element.classList.add('highlight');
+                setTimeout(() => {
+                    element.classList.remove('highlight');
+                }, 1000); // Remove highlight after 1 second
+            }
+
+            // Socket event listener for generating a point on the graph
+            socket.on('generate_point', function (x, y, id, color = '#8a0b11', radius = 60) {
+                // Remove any existing points with the same coordinates to avoid duplicates
+                const existingPoint = document.querySelector(`circle[data-x="${x}"][data-y="${y}"]`);
+                if (existingPoint) {
+                    existingPoint.remove();
+                }
+
+                // Create a new circle element for the point
+                const point = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                point.setAttribute('cx', x);
+                point.setAttribute('cy', y);
+                point.setAttribute('r', radius);
+                point.setAttribute('fill', color);
+                point.setAttribute('data-x', x); // Store x coordinate for duplicate checking
+                point.setAttribute('data-y', y); // Store y coordinate for duplicate checking
+                point.setAttribute('id', id);
+
+                // Add the point to the points container in the SVG
+                pointsContainer.appendChild(point);
+
+                return point; // Return the created point element (currently not used)
+            });
+
+            // Socket event listener to clear all points from the graph
+            socket.on('clear_points', function(){
+                pointsContainer.innerHTML = ''; // Clear inner HTML of points container
+            });
+
+            // Socket event listener to toggle between table and graph view
+            socket.on('toggle_tablegraph', function(data) {
+                const div1 = document.getElementById('table-content');
+                const div2 = document.getElementById('graph-content');
+                if (data == 'table') {
+                    div1.style.display = 'flex'; // Show table
+                    div2.style.display = 'none'; // Hide graph
+                }
+                else {
+                    div1.style.display = 'none'; // Hide table
+                    div2.style.display = 'flex'; // Show graph
+                }
+            });
+
+            // Socket event listener to update numerical values on the page
+            socket.on('update_values', function(data) {
+                for (const [key, value] of Object.entries(data)) {
+                    const element = document.getElementById(key);
+                    if (element && element.textContent != value) {
+                        element.textContent = value; // Update the text content of the element
+                        highlightNumber(key); // Highlight the updated number
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>
