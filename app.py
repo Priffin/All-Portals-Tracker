@@ -293,7 +293,7 @@ class StrongholdTracker:
 
     def run(self):
         self.start_monitoring()
-        self.socketio.run(self.app, debug=True)
+        self.socketio.run(self.app, debug=True, port=5123)
 
 def main():
     tracker = StrongholdTracker()
