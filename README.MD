@@ -12,5 +12,7 @@ All Portals Tracker created using Flask.
 - You can also view the tracker on a mobile device if you use a port forwarding service like bore: e.g. **bore local 5123 --to bore.pub**
 
 Acknowledgments:
+
 @thetalkingmime @shnenanigans @luvvlyjude - Original APGui Tracker
+
 @Lincoln-LM - Optimized pathfinding 
