@@ -2,6 +2,7 @@
 
 ## Overview
 
+**NOT A WHITELISTED TOOL SPEEDRUN.COM**
 All Portals Tracker created using Flask. 
 
 - Reads record file to automatically switch to next stronghold

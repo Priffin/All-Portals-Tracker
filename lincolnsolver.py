@@ -3,6 +3,7 @@ from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
 from typing import List, Tuple, Optional
 
+
 class Pathfinding:
     # Constants
     SH_BOUNDS = [
@@ -15,10 +16,10 @@ class Pathfinding:
         (19712, 21248),
         (22784, 24320),
     ]
-    
+
     STRONGHOLDS_PER_RING = [3, 6, 10, 15, 21, 28, 36, 10]
     OR_SCALE_FACTOR = 10000
-    
+
     # Routing strategies
     STRATEGIES = [
         routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC,
@@ -29,9 +30,11 @@ class Pathfinding:
     ]
 
     @staticmethod
-    def distance_between_points(p1: Tuple[float, float], p2: Tuple[float, float]) -> float:
+    def distance_between_points(
+        p1: Tuple[float, float], p2: Tuple[float, float]
+    ) -> float:
         """Calculate Euclidean distance between two points."""
-        return np.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)
+        return np.sqrt((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2)
 
     @classmethod
     def get_stronghold_ring(cls, coords: Tuple[float, float]) -> int:
@@ -43,21 +46,25 @@ class Pathfinding:
         return 0
 
     @classmethod
-    def estimate_stronghold_locations(cls, first8: List[Tuple[float, float]]) -> List[Tuple[float, float]]:
+    def estimate_stronghold_locations(
+        cls, first8: List[Tuple[float, float]]
+    ) -> List[Tuple[float, float]]:
         """
         Predict locations of additional strongholds using the first 8 points.
-        
+
         Args:
             first8: List of coordinates for the first 8 strongholds
-        
+
         Returns:
             List of estimated stronghold coordinates
         """
         points = [first8[-1]]  # Start with the last point from first8
 
         for ring, stronghold_count in enumerate(cls.STRONGHOLDS_PER_RING):
-            ring_strongholds = [sh for sh in first8 if cls.get_stronghold_ring(sh) - 1 == ring]
-            
+            ring_strongholds = [
+                sh for sh in first8 if cls.get_stronghold_ring(sh) - 1 == ring
+            ]
+
             if not ring_strongholds:
                 continue
 
@@ -77,10 +84,10 @@ class Pathfinding:
     def make_stronghold_list(self, first8: List[Tuple[float, float]]) -> List[List]:
         """
         Generate an optimized route through strongholds.
-        
+
         Args:
             first8: Coordinates of the first 8 strongholds
-        
+
         Returns:
             List of stronghold route information
         """
@@ -95,9 +102,11 @@ class Pathfinding:
         # Calculate distances and reset conditions
         for i, (x1, y1) in enumerate(points):
             for j, (x2, y2) in enumerate(points[1:], start=1):
-                origin_distance = np.sqrt((spawn_coords[0] - x2) ** 2 + (spawn_coords[1] - y2) ** 2)
+                origin_distance = np.sqrt(
+                    (spawn_coords[0] - x2) ** 2 + (spawn_coords[1] - y2) ** 2
+                )
                 real_distance = np.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
-                
+
                 # Special handling for 8th ring
                 if self.get_stronghold_ring((x1, y1)) == 8:
                     distance_matrix[i][j] = real_distance
@@ -107,7 +116,9 @@ class Pathfinding:
                     distance_matrix[i][j] = min(origin_distance, real_distance)
 
         # Scale and convert distance matrix
-        distance_matrix = np.floor(distance_matrix * self.OR_SCALE_FACTOR).astype(int).tolist()
+        distance_matrix = (
+            np.floor(distance_matrix * self.OR_SCALE_FACTOR).astype(int).tolist()
+        )
 
         # Set up routing problem
         manager = pywrapcp.RoutingIndexManager(len(points), 1, 0)
@@ -122,10 +133,12 @@ class Pathfinding:
         routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
 
         # Find best route
-        best_path = (float('inf'), None)
+        best_path = (float("inf"), None)
         for strategy in self.STRATEGIES:
             search_parameters = pywrapcp.DefaultRoutingSearchParameters()
-            search_parameters.local_search_metaheuristic = routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
+            search_parameters.local_search_metaheuristic = (
+                routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
+            )
             search_parameters.first_solution_strategy = strategy
             search_parameters.time_limit.seconds = 12
 
@@ -133,7 +146,9 @@ class Pathfinding:
             if not solution:
                 continue
 
-            route_length, route = self._evaluate_route(routing, solution, manager, distance_matrix, origin_reset_matrix)
+            route_length, route = self._evaluate_route(
+                routing, solution, manager, distance_matrix, origin_reset_matrix
+            )
             print(f"{strategy=} {route_length=}")
 
             if route_length < best_path[0]:
@@ -145,17 +160,19 @@ class Pathfinding:
         # Generate detailed stronghold information
         return self._process_route(points, route, origin_reset_matrix, distance_matrix)
 
-    def _evaluate_route(self, routing, solution, manager, distance_matrix, origin_reset_matrix):
+    def _evaluate_route(
+        self, routing, solution, manager, distance_matrix, origin_reset_matrix
+    ):
         """
         Evaluate the total route length and route details.
-        
+
         Args:
             routing: Routing model
             solution: Routing solution
             manager: Routing index manager
             distance_matrix: Precalculated distance matrix
             origin_reset_matrix: Matrix indicating origin resets
-        
+
         Returns:
             Tuple of (route_length, route)
         """
@@ -179,7 +196,10 @@ class Pathfinding:
                     or origin_reset_matrix[node][next_node]
                 )
                 if not any_reset:
-                    if distance_matrix[last_node][next_node] < distance_matrix[node][next_node]:
+                    if (
+                        distance_matrix[last_node][next_node]
+                        < distance_matrix[node][next_node]
+                    ):
                         route_length -= (
                             distance_matrix[node][next_node]
                             - distance_matrix[last_node][next_node]
@@ -190,13 +210,13 @@ class Pathfinding:
     def _process_route(self, points, route, origin_reset_matrix, distance_matrix):
         """
         Process the route and generate detailed stronghold information.
-        
+
         Args:
             points: List of all point coordinates
             route: Calculated route
             origin_reset_matrix: Matrix indicating origin resets
             distance_matrix: Precalculated distance matrix
-        
+
         Returns:
             List of stronghold route details
         """
@@ -206,13 +226,13 @@ class Pathfinding:
         for i, node in enumerate(route[1:-1], start=1):
             last_node = route[i - 1]
             next_node = route[i + 1]
-            
+
             # Determine route characteristics
             is_reset = origin_reset_matrix[last_node][node]
             is_last = next_node == 0
             coords = points[node]
             ring = self.get_stronghold_ring(coords)
-            
+
             # Set visual and route properties
             dot_colour = "purple" if is_last else "red" if is_reset else "green"
             line_colour = "green"
@@ -229,7 +249,7 @@ class Pathfinding:
                 line_colour = "red"
 
             # Complex logic for spawn point management
-            if (len(strongholds) >= 2 and strongholds[-2][6] == "blue"):
+            if len(strongholds) >= 2 and strongholds[-2][6] == "blue":
                 line_colour = "blue"
                 line_start = strongholds[-2][0]
                 last_node = route[i - 2]
@@ -237,22 +257,27 @@ class Pathfinding:
             elif 1 < i < len(route) - 2:
                 any_reset = is_reset or origin_reset_matrix[node][next_node]
                 if not any_reset:
-                    if distance_matrix[last_node][next_node] < distance_matrix[node][next_node]:
+                    if (
+                        distance_matrix[last_node][next_node]
+                        < distance_matrix[node][next_node]
+                    ):
                         if strongholds:
                             strongholds[-1][6] = "blue"
                             strongholds[-1][7] = 1
                         set_spawn = 2
 
             # Add stronghold to route
-            strongholds.append([
-                coords,           # Coordinates
-                ring,             # Ring number
-                line_destination, # Line destination
-                line_start,       # Line start
-                marker,           # Marker type
-                line_colour,      # Line color
-                dot_colour,       # Dot color
-                set_spawn         # Spawn point flag
-            ])
+            strongholds.append(
+                [
+                    coords,  # Coordinates
+                    ring,  # Ring number
+                    line_destination,  # Line destination
+                    line_start,  # Line start
+                    marker,  # Marker type
+                    line_colour,  # Line color
+                    dot_colour,  # Dot color
+                    set_spawn,  # Spawn point flag
+                ]
+            )
 
         return strongholds

@@ -10,18 +10,24 @@ from flask import Flask, render_template
 from flask_socketio import SocketIO, emit
 from lincolnsolver import Pathfinding
 
+
 class StrongholdTracker:
     def __init__(self):
         # Configuration
         self.app = Flask(__name__)
-        self.app.config['SECRET_KEY'] = 'secret!'
+        self.app.config["SECRET_KEY"] = "secret!"
         self.socketio = SocketIO(self.app)
 
         # Constants
         self.STRONGHOLD_RINGS = [
-            (1280, 2816), (4352, 5888), (7424, 8960), 
-            (10496, 12032), (13568, 15104), 
-            (16640, 18176), (19712, 21248), (22784, 24320)
+            (1280, 2816),
+            (4352, 5888),
+            (7424, 8960),
+            (10496, 12032),
+            (13568, 15104),
+            (16640, 18176),
+            (19712, 21248),
+            (22784, 24320),
         ]
         self.MAX_STRONGHOLDS = 129
 
@@ -35,105 +41,121 @@ class StrongholdTracker:
 
         # Initial UI values
         self.values = {
-            'coords': 'Waiting for pathfinding',
-            'distance': '',
-            'angle': '',
-            'stronghold_count': '0/129',
-            'instructions': '',
-            **{f'ring{i}': '' for i in range(1, 9)}
+            "coords": "Waiting for pathfinding",
+            "distance": "",
+            "angle": "",
+            "stronghold_count": "0/129",
+            "instructions": "",
+            **{f"ring{i}": "" for i in range(1, 9)},
         }
 
         self.setup_routes()
         self.setup_socket_events()
 
     def setup_routes(self):
-        @self.app.route('/')
+        @self.app.route("/")
         def index():
-            return render_template('index.html', values=self.values)
+            return render_template("index.html", values=self.values)
 
     def setup_socket_events(self):
-        @self.socketio.on('connect')
+        @self.socketio.on("connect")
         def test_connect():
-            print('Client connected')
-            self.socketio.emit('update_values', self.values)
-            self.socketio.emit('toggle_tablegraph', 'table')
-            self.socketio.emit('clear_points')
+            print("Client connected")
+            self.socketio.emit("update_values", self.values)
+            self.socketio.emit("toggle_tablegraph", "table")
+            self.socketio.emit("clear_points")
             for i in range(1, 9):
-                self.update_number(f'ring{i}', '')
+                self.update_number(f"ring{i}", "")
 
-        @self.socketio.on('disconnect')
+        @self.socketio.on("disconnect")
         def test_disconnect():
-            print('Client disconnected')
+            print("Client disconnected")
 
     def save_backup(self):
-        with open('all_portals_backup.txt', 'w') as f:
+        with open("all_portals_backup.txt", "w") as f:
             for ring, coords in self.first_eight_strongholds:
                 f.write(f"{coords}\n")
 
     def load_backup(self):
         def string_to_tuple(s):
-            match = re.match(r'\((-?\d+),\s*(-?\d+)\)', s)
+            match = re.match(r"\((-?\d+),\s*(-?\d+)\)", s)
             return (int(match.group(1)), int(match.group(2))) if match else None
 
-        with open('all_portals_backup.txt', 'r') as f:
+        with open("all_portals_backup.txt", "r") as f:
             for i, line in enumerate(f.readlines()):
                 if i > 7:
                     break
                 coords = string_to_tuple(line.strip())
                 if coords:
-                    self.update_number(f'ring{i+1}', str(coords))
+                    self.update_number(f"ring{i+1}", str(coords))
                     self.add_stronghold(coords, save=False)
 
     def add_stronghold(self, coords, save=True):
         if coords:
             ring = self.get_stronghold_ring(coords)
             self.first_eight_strongholds.append((ring, coords))
-            self.update_number(f'ring{ring}', str(coords))
+            self.update_number(f"ring{ring}", str(coords))
 
         if len(self.first_eight_strongholds) == 8:
             if save:
                 self.save_backup()
-            
+
             self.first_eight_strongholds.sort(key=lambda x: x[0])
-            
+
             for ring, (x, y) in self.first_eight_strongholds:
-                self.socketio.emit('generate_point', (x, -y, f'p{self.stronghold_count}', '#8a0b11'))
-            
-            scaled_coords = [(t[1][0]*8, t[1][1]*8) for t in self.first_eight_strongholds]
+                self.socketio.emit(
+                    "generate_point", (x, -y, f"p{self.stronghold_count}", "#8a0b11")
+                )
+
+            scaled_coords = [
+                (t[1][0] * 8, t[1][1] * 8) for t in self.first_eight_strongholds
+            ]
             solver = Pathfinding()
             self.route = solver.make_stronghold_list(scaled_coords)
-            
+
             for r in self.route:
                 print(tuple(map(lambda x: int(x // 8), r[0])), r[-1])
-            
-            self.socketio.emit('toggle_tablegraph', 'graph')
+
+            self.socketio.emit("toggle_tablegraph", "graph")
             self.next_stronghold()
 
     def next_stronghold(self):
-        self.stronghold_count += 1
         sh = self.route[self.stronghold_count - 9]
         self.target_coords = tuple(map(lambda x: int(x // 8), sh[0]))
-        
-        self.socketio.emit('generate_point', (self.target_coords[0], -self.target_coords[1], f'p{self.stronghold_count}'))
-        self.update_number('coords', str(self.target_coords))
-        
+
+        self.socketio.emit(
+            "generate_point",
+            (
+                self.target_coords[0],
+                -self.target_coords[1],
+                f"p{self.stronghold_count}",
+            ),
+        )
+        self.update_number("coords", str(self.target_coords))
+
         instructions = {
-            2: 'Do not set your spawnpoint at this stronghold.',
-            1: 'Leave your bed at this stronghold.',
+            2: "Do not set your spawnpoint at this stronghold.",
+            1: "Leave your bed at this stronghold.",
         }
-        self.update_number('instructions', instructions.get(sh[-1], ''))
+        self.update_number("instructions", instructions.get(sh[-1], ""))
 
     def update_number(self, number_id, new_value):
         if number_id in self.values:
             self.values[number_id] = new_value
-            self.socketio.emit('update_values', self.values)
+            self.socketio.emit("update_values", self.values)
             return True
         return False
 
     def get_stronghold_ring(self, coords):
-        dist = self.distance_between_points((0, 0), (coords[0]*8, coords[1]*8))
-        return next((ring + 1 for ring, bounds in enumerate(self.STRONGHOLD_RINGS) 
-                    if bounds[0] < dist < bounds[1]), 0)
+        dist = self.distance_between_points((0, 0), (coords[0] * 8, coords[1] * 8))
+        return next(
+            (
+                ring + 1
+                for ring, bounds in enumerate(self.STRONGHOLD_RINGS)
+                if bounds[0] < dist < bounds[1]
+            ),
+            0,
+        )
 
     @staticmethod
     def get_360_angle(a):
@@ -154,15 +176,17 @@ class StrongholdTracker:
 
     @staticmethod
     def distance_between_points(p1, p2):
-        return np.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)
+        return np.sqrt((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2)
 
     def get_record_path(self):
         home_dir = os.path.expanduser("~")
         latest_world_dir = os.path.join(home_dir, "speedrunigt", "latest_world.json")
         try:
-            with open(latest_world_dir, 'r') as f:
+            with open(latest_world_dir, "r") as f:
                 data = json.load(f)
-                return os.path.join(data.get('world_path'), 'speedrunigt', 'record.json')
+                return os.path.join(
+                    data.get("world_path"), "speedrunigt", "record.json"
+                )
         except Exception as e:
             print(f"Error getting record path: {e}")
             return None
@@ -170,31 +194,49 @@ class StrongholdTracker:
     def count_strongholds(self, filepath):
         old_count = self.stronghold_count
         try:
-            with open(filepath, 'r') as f:
+            with open(filepath, "r") as f:
                 data = json.load(f)
                 try:
-                    self.stronghold_count = max(
-                        int(t['name'][10:]) for t in data.get('timelines') 
-                        if t['name'][:10] == 'portal_no_'
-                    ) + self.skips
+                    self.stronghold_count = (
+                        max(
+                            int(t["name"][10:])
+                            for t in data.get("timelines")
+                            if t["name"][:10] == "portal_no_"
+                        )
+                        + self.skips
+                    )
                 except ValueError:
                     self.stronghold_count = 0
 
-                self.update_number('stronghold_count', f'{self.stronghold_count}/{self.MAX_STRONGHOLDS}')
-                
+                self.update_number(
+                    "stronghold_count",
+                    f"{self.stronghold_count}/{self.MAX_STRONGHOLDS}",
+                )
+
                 if old_count != self.stronghold_count:
                     if 1 <= self.stronghold_count <= 8:
                         self.add_stronghold(self.ninbot_coords)
                     elif self.stronghold_count >= 9:
                         self.next_stronghold()
+                    elif self.stronghold_count == 0:
+                        self.update_number(
+                            "stronghold_count",
+                            f"{self.stronghold_count}/{self.MAX_STRONGHOLDS}",
+                        )
+                        self.socketio.emit("toggle_tablegraph", "table")
+                        self.socketio.emit("clear_points")
+                        for i in range(1, 9):
+                            self.update_number(f"ring{i}", "")
         except Exception as e:
             print(f"Error counting strongholds: {e}")
 
     def monitor_file(self):
         filepath = self.get_record_path()
-        last_modified = os.path.getmtime(filepath)
-        self.count_strongholds(filepath)
-        
+        last_modified = 0
+        if filepath and os.path.isfile(filepath):
+            last_modified = os.path.getmtime(filepath)
+            self.count_strongholds(filepath)
+
         while True:
             filepath = self.get_record_path()
             if not filepath or not os.path.isfile(filepath):
@@ -213,48 +255,65 @@ class StrongholdTracker:
 
     def monitor_clipboard(self):
         previous = pyperclip.paste()
-        while True: 
+        while True:
             time.sleep(0.1)
             try:
-                contents = pyperclip.paste()           
+                contents = pyperclip.paste()
                 if contents == previous:
-                    continue  
+                    continue
                 previous = contents
 
-                if contents == '+skip':
+                if contents == "+skip":
                     self.stronghold_count += 1
                     self.skips += 1
-                    self.update_number('stronghold_count', f'{self.stronghold_count}/{self.MAX_STRONGHOLDS}')
+                    self.update_number(
+                        "stronghold_count",
+                        f"{self.stronghold_count}/{self.MAX_STRONGHOLDS}",
+                    )
                     self.next_stronghold()
-                
-                if contents == '+load_backup':
+
+                if contents == "+load_backup":
                     self.load_backup()
-                
-                if not contents.startswith('/execute in'):
+
+                if not contents.startswith("/execute in"):
                     continue
 
                 components = contents.split()
                 dimension = components[2][10:]
                 coords = {
-                    'x': float(components[6]) / 8 if dimension == 'overworld' else float(components[6]),
-                    'y': float(components[7]),
-                    'z': float(components[8]) / 8 if dimension == 'overworld' else float(components[8]),
-                    'a': float(components[9])
+                    "x": (
+                        float(components[6]) / 8
+                        if dimension == "overworld"
+                        else float(components[6])
+                    ),
+                    "y": float(components[7]),
+                    "z": (
+                        float(components[8]) / 8
+                        if dimension == "overworld"
+                        else float(components[8])
+                    ),
+                    "a": float(components[9]),
                 }
 
                 if self.target_coords:
                     sh_x, sh_z = self.target_coords
-                    s_a = self.calc_angle(coords['x'], coords['z'], sh_x, sh_z)
-                    stronghold_angle = self.get_360_angle(-90+s_a)
-                    angle_delta = self.smallest_angle_difference(self.get_360_angle(coords['a']), stronghold_angle)
-                    
-                    angle_text = f'{"<--" if angle_delta > 0 else ""}{abs(angle_delta)}{"-->" if angle_delta <= 0 else ""}'
-                    distance = self.distance_between_points((coords['x'], coords['z']), (sh_x, sh_z))
-                    
-                    self.update_number('angle', f'Angle: {round(stronghold_angle, 1)} ({angle_text})')
-                    self.update_number('distance', f'Distance: {round(distance)}')
+                    s_a = self.calc_angle(coords["x"], coords["z"], sh_x, sh_z)
+                    stronghold_angle = self.get_360_angle(-90 + s_a)
+                    angle_delta = self.smallest_angle_difference(
+                        self.get_360_angle(coords["a"]), stronghold_angle
+                    )
 
-            except pyperclip.PyperclipException as e: 
+                    angle_text = f'{"<--" if angle_delta > 0 else ""}{abs(angle_delta)}{"-->" if angle_delta <= 0 else ""}'
+                    distance = self.distance_between_points(
+                        (coords["x"], coords["z"]), (sh_x, sh_z)
+                    )
+
+                    self.update_number(
+                        "angle", f"Angle: {round(stronghold_angle, 1)} ({angle_text})"
+                    )
+                    self.update_number("distance", f"Distance: {round(distance)}")
+
+            except pyperclip.PyperclipException as e:
                 print(f"Error accessing clipboard: {e}")
                 break
             except KeyboardInterrupt:
@@ -270,22 +329,25 @@ class StrongholdTracker:
                 for line in response.iter_lines():
                     if line:
                         try:
-                            line = json.loads(line.decode('utf-8')[6:])
-                            stronghold = line['predictions'][0]
-                            self.ninbot_coords = (stronghold['chunkX'] * 2, stronghold['chunkZ'] * 2)
+                            line = json.loads(line.decode("utf-8")[6:])
+                            stronghold = line["predictions"][0]
+                            self.ninbot_coords = (
+                                stronghold["chunkX"] * 2,
+                                stronghold["chunkZ"] * 2,
+                            )
                         except Exception as e:
                             pass
             except requests.exceptions.RequestException as e:
                 print(f"Error connecting to event stream: {e}")
                 time.sleep(10)
             except Exception as e:
-                print(f"An unexpected error occurred: {e}")    
+                print(f"An unexpected error occurred: {e}")
 
     def start_monitoring(self):
         threads = [
             threading.Thread(target=self.monitor_ninbot, daemon=True),
             threading.Thread(target=self.monitor_file, daemon=True),
-            threading.Thread(target=self.monitor_clipboard, daemon=True)
+            threading.Thread(target=self.monitor_clipboard, daemon=True),
         ]
         for thread in threads:
             thread.start()
@@ -294,9 +356,11 @@ class StrongholdTracker:
         self.start_monitoring()
         self.socketio.run(self.app, debug=True, port=5123)
 
+
 def main():
     tracker = StrongholdTracker()
     tracker.run()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
