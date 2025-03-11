@@ -12,24 +12,23 @@ from lincolnsolver import Pathfinding
 
 
 class StrongholdTracker:
+    STRONGHOLD_RINGS = [
+        (1280, 2816),
+        (4352, 5888),
+        (7424, 8960),
+        (10496, 12032),
+        (13568, 15104),
+        (16640, 18176),
+        (19712, 21248),
+        (22784, 24320),
+    ]
+    MAX_STRONGHOLDS = 129
+
     def __init__(self):
         # Configuration
         self.app = Flask(__name__)
         self.app.config["SECRET_KEY"] = "secret!"
         self.socketio = SocketIO(self.app)
-
-        # Constants
-        self.STRONGHOLD_RINGS = [
-            (1280, 2816),
-            (4352, 5888),
-            (7424, 8960),
-            (10496, 12032),
-            (13568, 15104),
-            (16640, 18176),
-            (19712, 21248),
-            (22784, 24320),
-        ]
-        self.MAX_STRONGHOLDS = 129
 
         # State variables
         self.ninbot_coords = None
@@ -46,49 +45,37 @@ class StrongholdTracker:
             "angle": "",
             "stronghold_count": "0/129",
             "instructions": "",
-            **{f"ring{i}": "" for i in range(1, 9)},
-        }
+        } + {f"ring{i}": "" for i in range(1, 9)}
 
-        self.setup_routes()
-        self.setup_socket_events()
+        # Flask & SocketIO routing
+        self.app.add_url_rule("/", None, self.flask_index)
+        self.socketio.on_event("connect", self.on_client_connect)
+        self.socketio.on_event("disconnect", self.on_client_disconnect)
 
-    def setup_routes(self):
-        @self.app.route("/")
-        def index():
-            return render_template("index.html", values=self.values)
+    def flask_index(self):
+        return render_template("index.html", values=self.values)
 
-    def setup_socket_events(self):
-        @self.socketio.on("connect")
-        def test_connect():
-            print("Client connected")
-            self.socketio.emit("update_values", self.values)
-            self.socketio.emit("toggle_tablegraph", "table")
-            self.socketio.emit("clear_points")
-            for i in range(1, 9):
-                self.update_number(f"ring{i}", "")
+    def on_client_connect(self):
+        print("Client connected")
+        self.socketio.emit("update_values", self.values)
+        self.socketio.emit("toggle_tablegraph", "table")
+        self.socketio.emit("clear_points")
+        for i in range(1, 9):
+            self.update_number(f"ring{i}", "")
 
-        @self.socketio.on("disconnect")
-        def test_disconnect():
-            print("Client disconnected")
+    def on_client_disconnect(self):
+        print("Client disconnected")
 
-    def save_backup(self):
-        with open("all_portals_backup.txt", "w") as f:
-            for ring, coords in self.first_eight_strongholds:
-                f.write(f"{coords}\n")
+    def save_backup(self, filepath="all_portals_backup.json"):
+        with open(filepath, "w+", encoding="utf-8") as backup_file:
+            json.dump([t[1] for t in self.first_eight_strongholds], backup_file)
 
-    def load_backup(self):
-        def string_to_tuple(s):
-            match = re.match(r"\((-?\d+),\s*(-?\d+)\)", s)
-            return (int(match.group(1)), int(match.group(2))) if match else None
-
-        with open("all_portals_backup.txt", "r") as f:
-            for i, line in enumerate(f.readlines()):
-                if i > 7:
-                    break
-                coords = string_to_tuple(line.strip())
-                if coords:
-                    self.update_number(f"ring{i+1}", str(coords))
-                    self.add_stronghold(coords, save=False)
+    def load_backup(self, filepath="all_portals_backup.json"):
+        with open(filepath, "r", encoding="utf-8") as backup_file:
+            data = json.load(backup_file)
+        for i, coords in enumerate(data[:8]):
+            self.update_number(f"ring{i+1}", str(coords))
+            self.add_stronghold(coords, save=False)
 
     def add_stronghold(self, coords, save=True):
         if coords:
@@ -100,7 +87,7 @@ class StrongholdTracker:
             if save:
                 self.save_backup()
 
-            self.first_eight_strongholds.sort(key=lambda x: x[0])
+            self.first_eight_strongholds.sort()
 
             for ring, (x, y) in self.first_eight_strongholds:
                 self.socketio.emit(
