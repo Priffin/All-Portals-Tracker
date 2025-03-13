@@ -45,7 +45,7 @@ class StrongholdTracker:
             "angle": "",
             "stronghold_count": "0/129",
             "instructions": "",
-        } + {f"ring{i}": "" for i in range(1, 9)}
+        } | {f"ring{i}": "" for i in range(1, 9)}
 
         # Flask & SocketIO routing
         self.app.add_url_rule("/", None, self.flask_index)
