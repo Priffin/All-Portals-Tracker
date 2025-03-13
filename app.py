@@ -97,6 +97,13 @@ class StrongholdTracker:
                 self.save_backup()
 
             for ring, (x, y) in self.first_eight_strongholds:
+                angle = np.arctan2(y, x)
+                distance = (
+                    self.STRONGHOLD_RINGS[ring - 1][0]
+                    + self.STRONGHOLD_RINGS[ring - 1][1]
+                ) // 2
+                x = distance * np.cos(angle) // 8
+                y = distance * np.sin(angle) // 8
                 self.socketio.emit(
                     "generate_point", (x, -y, f"p{self.stronghold_count}", "#8a0b11")
                 )
