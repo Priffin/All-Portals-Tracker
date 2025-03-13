@@ -1,35 +1,40 @@
 import os
-import re
+import bisect
 import json
 import time
 import threading
+import logging
+import contextlib
 import numpy as np
 import pyperclip
 import requests
 from flask import Flask, render_template
-from flask_socketio import SocketIO, emit
-from lincolnsolver import Pathfinding
+from flask_socketio import SocketIO
+from route_solver import ORSolver, PuLPRingStarSolver
 
 
 class StrongholdTracker:
+    STRONGHOLD_RINGS = [
+        (1280, 2816),
+        (4352, 5888),
+        (7424, 8960),
+        (10496, 12032),
+        (13568, 15104),
+        (16640, 18176),
+        (19712, 21248),
+        (22784, 24320),
+    ]
+    MAX_STRONGHOLDS = 129
+
     def __init__(self):
         # Configuration
         self.app = Flask(__name__)
         self.app.config["SECRET_KEY"] = "secret!"
         self.socketio = SocketIO(self.app)
 
-        # Constants
-        self.STRONGHOLD_RINGS = [
-            (1280, 2816),
-            (4352, 5888),
-            (7424, 8960),
-            (10496, 12032),
-            (13568, 15104),
-            (16640, 18176),
-            (19712, 21248),
-            (22784, 24320),
-        ]
-        self.MAX_STRONGHOLDS = 129
+        # Logging
+        logging.basicConfig(level=logging.INFO)
+        self.logger = logging.getLogger(__name__)
 
         # State variables
         self.ninbot_coords = None
@@ -46,63 +51,59 @@ class StrongholdTracker:
             "angle": "",
             "stronghold_count": "0/129",
             "instructions": "",
-            **{f"ring{i}": "" for i in range(1, 9)},
-        }
+        } | {f"ring{i}": "" for i in range(1, 9)}
 
-        self.setup_routes()
-        self.setup_socket_events()
+        # Flask & SocketIO routing
+        self.app.add_url_rule("/", None, self.flask_index)
+        self.socketio.on_event("connect", self.on_client_connect)
+        self.socketio.on_event("disconnect", self.on_client_disconnect)
 
-    def setup_routes(self):
-        @self.app.route("/")
-        def index():
-            return render_template("index.html", values=self.values)
+    def flask_index(self):
+        return render_template("index.html", values=self.values)
 
-    def setup_socket_events(self):
-        @self.socketio.on("connect")
-        def test_connect():
-            print("Client connected")
-            self.socketio.emit("update_values", self.values)
-            self.socketio.emit("toggle_tablegraph", "table")
-            self.socketio.emit("clear_points")
-            for i in range(1, 9):
-                self.update_number(f"ring{i}", "")
+    def on_client_connect(self):
+        self.logger.info("SocketIO client connected")
+        self.socketio.emit("update_values", self.values)
+        self.socketio.emit("toggle_tablegraph", "table")
+        self.socketio.emit("clear_graph")
+        for i in range(1, 9):
+            self.update_number(f"ring{i}", "")
 
-        @self.socketio.on("disconnect")
-        def test_disconnect():
-            print("Client disconnected")
+    def on_client_disconnect(self):
+        self.logger.info("SocketIO client disconnected")
 
-    def save_backup(self):
-        with open("all_portals_backup.txt", "w") as f:
-            for ring, coords in self.first_eight_strongholds:
-                f.write(f"{coords}\n")
+    def save_backup(self, filepath="all_portals_backup.json"):
+        with open(filepath, "w+", encoding="utf-8") as backup_file:
+            json.dump(
+                [t[1] for t in self.first_eight_strongholds], backup_file, indent=2
+            )
 
-    def load_backup(self):
-        def string_to_tuple(s):
-            match = re.match(r"\((-?\d+),\s*(-?\d+)\)", s)
-            return (int(match.group(1)), int(match.group(2))) if match else None
-
-        with open("all_portals_backup.txt", "r") as f:
-            for i, line in enumerate(f.readlines()):
-                if i > 7:
-                    break
-                coords = string_to_tuple(line.strip())
-                if coords:
-                    self.update_number(f"ring{i+1}", str(coords))
-                    self.add_stronghold(coords, save=False)
+    def load_backup(self, filepath="all_portals_backup.json"):
+        with open(filepath, "r", encoding="utf-8") as backup_file:
+            data = json.load(backup_file)
+        for i, coords in enumerate(data[:8]):
+            coords = tuple(coords)
+            self.update_number(f"ring{i+1}", str(coords))
+            self.add_stronghold(coords, save=False)
 
     def add_stronghold(self, coords, save=True):
         if coords:
             ring = self.get_stronghold_ring(coords)
-            self.first_eight_strongholds.append((ring, coords))
+            bisect.insort(self.first_eight_strongholds, (ring, coords))
             self.update_number(f"ring{ring}", str(coords))
 
         if len(self.first_eight_strongholds) == 8:
             if save:
                 self.save_backup()
 
-            self.first_eight_strongholds.sort(key=lambda x: x[0])
-
             for ring, (x, y) in self.first_eight_strongholds:
+                angle = np.arctan2(y, x)
+                distance = (
+                    self.STRONGHOLD_RINGS[ring - 1][0]
+                    + self.STRONGHOLD_RINGS[ring - 1][1]
+                ) // 2
+                x = distance * np.cos(angle) // 8
+                y = distance * np.sin(angle) // 8
                 self.socketio.emit(
                     "generate_point", (x, -y, f"p{self.stronghold_count}", "#8a0b11")
                 )
@@ -110,18 +111,23 @@ class StrongholdTracker:
             scaled_coords = [
                 (t[1][0] * 8, t[1][1] * 8) for t in self.first_eight_strongholds
             ]
-            solver = Pathfinding()
-            self.route = solver.make_stronghold_list(scaled_coords)
-
-            for r in self.route:
-                print(tuple(map(lambda x: int(x // 8), r[0])), r[-1])
+            self.route = PuLPRingStarSolver.solve(scaled_coords)
 
             self.socketio.emit("toggle_tablegraph", "graph")
             self.next_stronghold()
 
     def next_stronghold(self):
-        sh = self.route[self.stronghold_count - 9]
-        self.target_coords = tuple(map(lambda x: int(x // 8), sh[0]))
+        if self.route is None:
+            return
+        if self.stronghold_count < 8:
+            self.logger.info("Not enough strongholds to route through")
+            return
+        if self.stronghold_count >= self.MAX_STRONGHOLDS:
+            self.logger.info("Path complete")
+            self.update_number("coords", "All portals complete!")
+            return
+        sh = self.route[self.stronghold_count - 8]
+        self.target_coords = (sh[0][0] // 8, sh[0][1] // 8)
 
         self.socketio.emit(
             "generate_point",
@@ -131,11 +137,24 @@ class StrongholdTracker:
                 f"p{self.stronghold_count}",
             ),
         )
+        self.socketio.emit(
+            "generate_line",
+            (
+                sh[3][0] // 8,
+                -(sh[3][1] // 8),
+                sh[2][0] // 8,
+                -(sh[2][1] // 8),
+                sh[5],
+                15 if sh[-1] == 2 else 40,
+            ),
+        )
         self.update_number("coords", str(self.target_coords))
 
         instructions = {
-            2: "Do not set your spawnpoint at this stronghold.",
-            1: "Leave your bed at this stronghold.",
+            3: "Take your bed but do not set your spawnpoint at this stronghold.",
+            2: "Do not take your bed.",
+            1: "Take your bed and leave it at this stronghold.",
+            0: "Take your bed and set your spawnpoint at this stronghold.",
         }
         self.update_number("instructions", instructions.get(sh[-1], ""))
 
@@ -182,19 +201,21 @@ class StrongholdTracker:
         home_dir = os.path.expanduser("~")
         latest_world_dir = os.path.join(home_dir, "speedrunigt", "latest_world.json")
         try:
-            with open(latest_world_dir, "r") as f:
+            with open(latest_world_dir, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 return os.path.join(
                     data.get("world_path"), "speedrunigt", "record.json"
                 )
-        except Exception as e:
-            print(f"Error getting record path: {e}")
+        except (FileNotFoundError, KeyError):
+            logging.getLogger("record_monitor").error(
+                "Error getting record path", exc_info=True
+            )
             return None
 
     def count_strongholds(self, filepath):
         old_count = self.stronghold_count
         try:
-            with open(filepath, "r") as f:
+            with open(filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 try:
                     self.stronghold_count = (
@@ -224,13 +245,16 @@ class StrongholdTracker:
                             f"{self.stronghold_count}/{self.MAX_STRONGHOLDS}",
                         )
                         self.socketio.emit("toggle_tablegraph", "table")
-                        self.socketio.emit("clear_points")
+                        self.socketio.emit("clear_graph")
                         for i in range(1, 9):
                             self.update_number(f"ring{i}", "")
-        except Exception as e:
-            print(f"Error counting strongholds: {e}")
+        except (FileNotFoundError, KeyError):
+            logging.getLogger("record_monitor").error(
+                "Error counting strongholds", exc_info=True
+            )
 
     def monitor_file(self):
+        logger = logging.getLogger("record_monitor")
         filepath = self.get_record_path()
         last_modified = 0
         if filepath and os.path.isfile(filepath):
@@ -249,11 +273,12 @@ class StrongholdTracker:
                     self.count_strongholds(filepath)
                     last_modified = current_modified
             except FileNotFoundError:
-                print(f"File not found: {filepath}")
+                logger.error("Record file not found", exc_info=True)
                 return
             time.sleep(0.5)
 
     def monitor_clipboard(self):
+        logger = logging.getLogger("clipboard_monitor")
         previous = pyperclip.paste()
         while True:
             time.sleep(0.1)
@@ -264,6 +289,9 @@ class StrongholdTracker:
                 previous = contents
 
                 if contents == "+skip":
+                    # clear clipboard to make repeated skips easier
+                    pyperclip.copy("")
+                    self.logger.info("Skipping stronghold")
                     self.stronghold_count += 1
                     self.skips += 1
                     self.update_number(
@@ -273,7 +301,9 @@ class StrongholdTracker:
                     self.next_stronghold()
 
                 if contents == "+load_backup":
-                    self.load_backup()
+                    self.logger.info("Loading backup")
+                    with contextlib.suppress(FileNotFoundError):
+                        self.load_backup()
 
                 if not contents.startswith("/execute in"):
                     continue
@@ -313,35 +343,37 @@ class StrongholdTracker:
                     )
                     self.update_number("distance", f"Distance: {round(distance)}")
 
-            except pyperclip.PyperclipException as e:
-                print(f"Error accessing clipboard: {e}")
+            except pyperclip.PyperclipException:
+                logger.error("Error accessing clipboard", exc_info=True)
                 break
             except KeyboardInterrupt:
-                print("\nExiting clipboard monitor.")
+                logger.info("Exiting clipboard monitor.", exc_info=True)
                 break
 
     def monitor_ninbot(self):
+        logger = logging.getLogger("ninbot_monitor")
         url = "http://localhost:52533/api/v1/stronghold/events"
         while True:
             try:
-                response = requests.get(url, stream=True)
+                response = requests.get(url, stream=True, timeout=10)
                 response.raise_for_status()
                 for line in response.iter_lines():
                     if line:
                         try:
                             line = json.loads(line.decode("utf-8")[6:])
-                            stronghold = line["predictions"][0]
-                            self.ninbot_coords = (
-                                stronghold["chunkX"] * 2,
-                                stronghold["chunkZ"] * 2,
+                            if line["predictions"]:
+                                stronghold = line["predictions"][0]
+                                self.ninbot_coords = (
+                                    stronghold["chunkX"] * 2,
+                                    stronghold["chunkZ"] * 2,
+                                )
+                        except (KeyError, IndexError, json.JSONDecodeError):
+                            logger.error(
+                                "Error parsing NinjabrainBot API response",
+                                exc_info=True,
                             )
-                        except Exception as e:
-                            pass
-            except requests.exceptions.RequestException as e:
-                print(f"Error connecting to event stream: {e}")
+            except requests.exceptions.RequestException:
                 time.sleep(10)
-            except Exception as e:
-                print(f"An unexpected error occurred: {e}")
 
     def start_monitoring(self):
         threads = [
@@ -354,7 +386,7 @@ class StrongholdTracker:
 
     def run(self):
         self.start_monitoring()
-        self.socketio.run(self.app, debug=True, port=5123)
+        self.socketio.run(self.app, debug=True, port=5123, use_reloader=False)
 
 
 def main():
