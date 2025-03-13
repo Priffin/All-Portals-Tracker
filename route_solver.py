@@ -1,11 +1,11 @@
+from typing import List, Tuple, Optional
+from abc import abstractmethod
 import numpy as np
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
-from typing import List, Tuple, Optional
 
 
-class Pathfinding:
-    # Constants
+class APSolver:
     SH_BOUNDS = [
         (1280, 2816),
         (4352, 5888),
@@ -16,8 +16,72 @@ class Pathfinding:
         (19712, 21248),
         (22784, 24320),
     ]
-
     STRONGHOLDS_PER_RING = [3, 6, 10, 15, 21, 28, 36, 10]
+
+    @classmethod
+    @abstractmethod
+    def solve(cls, first_8_strongholds: List[Tuple[float, float]]) -> List[List]:
+        """
+        Solve an All Portals path given a stronghold measured from each ring
+
+        Args:
+            first_8_strongholds: List of coordinates for the first 8 strongholds
+
+        Returns:
+            Detailed and ordered information for each stronghold on the path
+        """
+
+    @staticmethod
+    def euclidean_distance(p1: Tuple[float, float], p2: Tuple[float, float]) -> float:
+        """Calculate Euclidean distance between two points."""
+        return np.sqrt((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2)
+
+    @classmethod
+    def get_stronghold_ring(cls, coords: Tuple[float, float]) -> int:
+        """Determine the ring of a stronghold based on its distance from origin."""
+        dist = cls.euclidean_distance((0, 0), coords)
+        for ring, bounds in enumerate(cls.SH_BOUNDS):
+            if bounds[0] < dist < bounds[1]:
+                return ring + 1
+        return 0
+
+    @classmethod
+    def estimate_stronghold_locations(
+        cls, first_8_strongholds: List[Tuple[float, float]]
+    ) -> List[Tuple[float, float]]:
+        """
+        Predict locations of additional strongholds using the first 8 points.
+
+        Args:
+            first_8_strongholds: List of coordinates for the first 8 strongholds
+
+        Returns:
+            List of estimated stronghold coordinates
+        """
+        # path should start from the 7th ring measured stronghold
+        points = [first_8_strongholds[-2]]
+
+        for ring, stronghold_count in enumerate(cls.STRONGHOLDS_PER_RING):
+            x, z = first_8_strongholds[ring]
+            # estimate each stronghold to be in the center of the ring
+            magnitude = sum(cls.SH_BOUNDS[ring]) // 2
+            base_angle = np.arctan2(z, x)
+
+            for i in range(1, stronghold_count):
+                # strongholds are roughly equally spaced around the ring
+                angle = base_angle + (2 * np.pi * i / stronghold_count)
+                estimate_x = round(magnitude * np.cos(angle))
+                estimate_z = round(magnitude * np.sin(angle))
+                points.append((estimate_x, estimate_z))
+
+        return points
+
+
+class ORSolver(APSolver):
+    """AP Solver utilizing OR-Tools' routing model"""
+
+    # OR-Tools requires integers
+    # this is how much to scale by before truncating coordinates
     OR_SCALE_FACTOR = 10000
 
     # Routing strategies
@@ -29,71 +93,10 @@ class Pathfinding:
         routing_enums_pb2.FirstSolutionStrategy.GLOBAL_CHEAPEST_ARC,
     ]
 
-    @staticmethod
-    def distance_between_points(
-        p1: Tuple[float, float], p2: Tuple[float, float]
-    ) -> float:
-        """Calculate Euclidean distance between two points."""
-        return np.sqrt((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2)
-
     @classmethod
-    def get_stronghold_ring(cls, coords: Tuple[float, float]) -> int:
-        """Determine the ring of a stronghold based on its distance from origin."""
-        dist = cls.distance_between_points((0, 0), coords)
-        for ring, bounds in enumerate(cls.SH_BOUNDS):
-            if bounds[0] < dist < bounds[1]:
-                return ring + 1
-        return 0
-
-    @classmethod
-    def estimate_stronghold_locations(
-        cls, first8: List[Tuple[float, float]]
-    ) -> List[Tuple[float, float]]:
-        """
-        Predict locations of additional strongholds using the first 8 points.
-
-        Args:
-            first8: List of coordinates for the first 8 strongholds
-
-        Returns:
-            List of estimated stronghold coordinates
-        """
-        points = [first8[-1]]  # Start with the last point from first8
-
-        for ring, stronghold_count in enumerate(cls.STRONGHOLDS_PER_RING):
-            ring_strongholds = [
-                sh for sh in first8 if cls.get_stronghold_ring(sh) - 1 == ring
-            ]
-
-            if not ring_strongholds:
-                continue
-
-            x, z = ring_strongholds[0]
-            magnitude = sum(cls.SH_BOUNDS[ring]) // 2
-            base_angle = np.arctan2(z, x)
-
-            # Generate additional strongholds for this ring
-            for i in range(stronghold_count - 1):
-                angle = base_angle + (2 * np.pi * (i + 1) / stronghold_count)
-                estimate_x = round(magnitude * np.cos(angle))
-                estimate_z = round(magnitude * np.sin(angle))
-                points.append((estimate_x, estimate_z))
-
-        return points
-
-    def make_stronghold_list(self, first8: List[Tuple[float, float]]) -> List[List]:
-        """
-        Generate an optimized route through strongholds.
-
-        Args:
-            first8: Coordinates of the first 8 strongholds
-
-        Returns:
-            List of stronghold route information
-        """
+    def solve(cls, first_8_strongholds: List[Tuple[float, float]]) -> List[List]:
         # Estimate locations of all strongholds
-        points = self.estimate_stronghold_locations(first8)
-        spawn_coords = (0, 0)
+        points = cls.estimate_stronghold_locations(first_8_strongholds)
 
         # Prepare distance and reset matrices
         distance_matrix = np.zeros((len(points), len(points)), np.float64)
@@ -102,22 +105,23 @@ class Pathfinding:
         # Calculate distances and reset conditions
         for i, (x1, y1) in enumerate(points):
             for j, (x2, y2) in enumerate(points[1:], start=1):
-                origin_distance = np.sqrt(
-                    (spawn_coords[0] - x2) ** 2 + (spawn_coords[1] - y2) ** 2
-                )
-                real_distance = np.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
+                origin_distance = cls.euclidean_distance((0, 0), (x2, y2))
+                real_distance = cls.euclidean_distance((x1, y1), (x2, y2))
 
-                # Special handling for 8th ring
-                if self.get_stronghold_ring((x1, y1)) == 8:
+                # 8th ring strongholds should never route through the origin
+                # this is for convenience when actually following the route
+                # and isn't likely to be optimal anyway
+                if cls.get_stronghold_ring((x1, y1)) == 8:
                     distance_matrix[i][j] = real_distance
                 else:
+                    # if O->B is shorter than A->B then B should always be accessed via the origin
                     if origin_distance < real_distance:
                         origin_reset_matrix[i][j] = True
                     distance_matrix[i][j] = min(origin_distance, real_distance)
 
-        # Scale and convert distance matrix
+        # OR-Tools requires integers; scale and truncate
         distance_matrix = (
-            np.floor(distance_matrix * self.OR_SCALE_FACTOR).astype(int).tolist()
+            np.floor(distance_matrix * cls.OR_SCALE_FACTOR).astype(int).tolist()
         )
 
         # Set up routing problem
@@ -134,7 +138,7 @@ class Pathfinding:
 
         # Find best route
         best_path = (float("inf"), None)
-        for strategy in self.STRATEGIES:
+        for strategy in cls.STRATEGIES:
             search_parameters = pywrapcp.DefaultRoutingSearchParameters()
             search_parameters.local_search_metaheuristic = (
                 routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
@@ -146,7 +150,7 @@ class Pathfinding:
             if not solution:
                 continue
 
-            route_length, route = self._evaluate_route(
+            route_length, route = cls.evaluate_route(
                 routing, solution, manager, distance_matrix, origin_reset_matrix
             )
             print(f"{strategy=} {route_length=}")
@@ -158,10 +162,11 @@ class Pathfinding:
         assert route is not None, "No solution found"
 
         # Generate detailed stronghold information
-        return self._process_route(points, route, origin_reset_matrix, distance_matrix)
+        return cls.process_route(points, route, origin_reset_matrix, distance_matrix)
 
-    def _evaluate_route(
-        self, routing, solution, manager, distance_matrix, origin_reset_matrix
+    @staticmethod
+    def evaluate_route(
+        routing, solution, manager, distance_matrix, origin_reset_matrix
     ):
         """
         Evaluate the total route length and route details.
@@ -207,7 +212,8 @@ class Pathfinding:
 
         return route_length, route
 
-    def _process_route(self, points, route, origin_reset_matrix, distance_matrix):
+    @classmethod
+    def process_route(cls, points, route, origin_reset_matrix, distance_matrix):
         """
         Process the route and generate detailed stronghold information.
 
@@ -231,7 +237,7 @@ class Pathfinding:
             is_reset = origin_reset_matrix[last_node][node]
             is_last = next_node == 0
             coords = points[node]
-            ring = self.get_stronghold_ring(coords)
+            ring = cls.get_stronghold_ring(coords)
 
             # Set visual and route properties
             dot_colour = "purple" if is_last else "red" if is_reset else "green"

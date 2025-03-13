@@ -9,7 +9,7 @@ import requests
 import contextlib
 from flask import Flask, render_template
 from flask_socketio import SocketIO, emit
-from lincolnsolver import Pathfinding
+from route_solver import ORSolver
 
 
 class StrongholdTracker:
@@ -69,7 +69,9 @@ class StrongholdTracker:
 
     def save_backup(self, filepath="all_portals_backup.json"):
         with open(filepath, "w+", encoding="utf-8") as backup_file:
-            json.dump([t[1] for t in self.first_eight_strongholds], backup_file, indent=2)
+            json.dump(
+                [t[1] for t in self.first_eight_strongholds], backup_file, indent=2
+            )
 
     def load_backup(self, filepath="all_portals_backup.json"):
         with open(filepath, "r", encoding="utf-8") as backup_file:
@@ -97,8 +99,7 @@ class StrongholdTracker:
             scaled_coords = [
                 (t[1][0] * 8, t[1][1] * 8) for t in self.first_eight_strongholds
             ]
-            solver = Pathfinding()
-            self.route = solver.make_stronghold_list(scaled_coords)
+            self.route = ORSolver.solve(scaled_coords)
 
             for r in self.route:
                 print(tuple(map(lambda x: int(x // 8), r[0])), r[-1])
@@ -107,8 +108,8 @@ class StrongholdTracker:
             self.next_stronghold()
 
     def next_stronghold(self):
-        sh = self.route[self.stronghold_count - 9]
-        self.target_coords = tuple(map(lambda x: int(x // 8), sh[0]))
+        sh = self.route[self.stronghold_count - 8]
+        self.target_coords = (sh[0][0] // 8, sh[0][1] // 8)
 
         self.socketio.emit(
             "generate_point",
