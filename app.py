@@ -1,5 +1,5 @@
 import os
-import re
+import bisect
 import json
 import time
 import threading
@@ -82,14 +82,12 @@ class StrongholdTracker:
     def add_stronghold(self, coords, save=True):
         if coords:
             ring = self.get_stronghold_ring(coords)
-            self.first_eight_strongholds.append((ring, coords))
+            bisect.insort(self.first_eight_strongholds, (ring, coords))
             self.update_number(f"ring{ring}", str(coords))
 
         if len(self.first_eight_strongholds) == 8:
             if save:
                 self.save_backup()
-
-            self.first_eight_strongholds.sort()
 
             for ring, (x, y) in self.first_eight_strongholds:
                 self.socketio.emit(
