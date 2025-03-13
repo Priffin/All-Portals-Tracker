@@ -10,7 +10,7 @@ import pyperclip
 import requests
 from flask import Flask, render_template
 from flask_socketio import SocketIO
-from route_solver import ORSolver
+from route_solver import ORSolver, PuLPRingStartSolver
 
 
 class StrongholdTracker:
@@ -104,12 +104,14 @@ class StrongholdTracker:
             scaled_coords = [
                 (t[1][0] * 8, t[1][1] * 8) for t in self.first_eight_strongholds
             ]
-            self.route = ORSolver.solve(scaled_coords)
+            self.route = PuLPRingStartSolver.solve(scaled_coords)
 
             self.socketio.emit("toggle_tablegraph", "graph")
             self.next_stronghold()
 
     def next_stronghold(self):
+        if self.route is None:
+            return
         if self.stronghold_count < 8:
             self.logger.info("Not enough strongholds to route through")
             return
@@ -127,8 +129,10 @@ class StrongholdTracker:
         self.update_number("coords", str(self.target_coords))
 
         instructions = {
+            3: "Take your bed but do not set your spawnpoint at this stronghold.",
             2: "Do not set your spawnpoint at this stronghold.",
             1: "Leave your bed at this stronghold.",
+            0: "Take your bed and set your spawnpoint at this stronghold.",
         }
         self.update_number("instructions", instructions.get(sh[-1], ""))
 
@@ -358,7 +362,7 @@ class StrongholdTracker:
 
     def run(self):
         self.start_monitoring()
-        self.socketio.run(self.app, debug=True, port=5123)
+        self.socketio.run(self.app, debug=True, port=5123, use_reloader=False)
 
 
 def main():
