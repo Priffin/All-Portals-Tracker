@@ -65,7 +65,6 @@ class APSolver:
         """
         # path should start from the 7th ring measured stronghold
         points = [first_8_strongholds[-2]]
-
         for ring, stronghold_count in enumerate(cls.STRONGHOLDS_PER_RING):
             x, z = first_8_strongholds[ring]
             # estimate each stronghold to be in the center of the ring
@@ -122,7 +121,6 @@ class PuLPRingStartSolver(APSolver):
     def solve(cls, first_8_strongholds: List[Tuple[float, float]]):
         logger = logging.getLogger("milp_solver")
         points = cls.estimate_stronghold_locations(first_8_strongholds)
-        points = points[:30]
         graph = nx.Graph()
         for idx, sh in enumerate(points, start=cls.REAL_ROOT):
             graph.add_node(idx, pos=sh)
@@ -389,42 +387,49 @@ class PuLPRingStartSolver(APSolver):
             ]
             for cycle_node in cycle
         }
-        for path_idx, cycle_node in enumerate(cycle[1:], start=1):
+        for path_idx, cycle_node in enumerate(cycle):
+            last_node = cycle[path_idx - 1]
             next_node = cycle[path_idx % len(cycle)]
             next_is_origin_reset = next_node < cls.REAL_ROOT
-            parsed_strongholds.append(
-                # filler data since it is not used
-                [
-                    graph.nodes[cycle_node]["pos"],
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    (
-                        # leave bed before going to assigned nodes
-                        1
-                        if cycle_assignments[cycle_node]
-                        # if next is an origin reset and there is only one assigned node
-                        # then we do not need to leave the spawnpoint
-                        and not (
-                            next_is_origin_reset
-                            and len(cycle_assignments[cycle_node] == 1)
-                        )
-                        else 0
-                    ),
-                ]
-            )
+            # don't need to draw the root node
+            if cycle_node != cls.REAL_ROOT:
+                parsed_strongholds.append(
+                    # filler data since it is not used
+                    [
+                        graph.nodes[cycle_node]["pos"],
+                        None,
+                        graph.nodes[cycle_node]["pos"],
+                        (
+                            (0, 0)
+                            if cycle_node in (cls.REAL_RING_1_1, cls.REAL_RING_1_2)
+                            else graph.nodes[last_node]["pos"]
+                        ),
+                        None,
+                        "black",
+                        None,
+                        (
+                            # leave bed before going to assigned nodes
+                            1
+                            if cycle_assignments[cycle_node]
+                            # if next is an origin reset and there is only one assigned node
+                            # then we do not need to leave the spawnpoint
+                            and not (
+                                next_is_origin_reset
+                                and len(cycle_assignments[cycle_node] == 1)
+                            )
+                            else 0
+                        ),
+                    ]
+                )
             for assigned_node in cycle_assignments[cycle_node]:
                 parsed_strongholds.append(
                     [
                         graph.nodes[assigned_node]["pos"],
                         None,
+                        graph.nodes[assigned_node]["pos"],
+                        graph.nodes[cycle_node]["pos"],
                         None,
-                        None,
-                        None,
-                        None,
+                        "black",
                         None,
                         2,
                     ]

@@ -329,6 +329,7 @@
                         <line x1="-3000" y1="0" x2="3000" y2="0" stroke="rgba(255,255,255,0.1)" stroke-width="10"/>
                         <line x1="0" y1="-3000" x2="0" y2="3000" stroke="rgba(255,255,255,0.1)" stroke-width="10"/>
 
+                        <g id="lines"></g>
                         <g id="points"></g>
                     </svg>
                 </div>
@@ -381,6 +382,7 @@
             // Get SVG and points container elements
             const svg = document.getElementById('portal-graph');
             const pointsContainer = document.getElementById('points');
+            const linesContainer = document.getElementById('lines');
 
             // Function to highlight a number value element
             function highlightNumber(id) {
@@ -415,9 +417,21 @@
                 return point; // Return the created point element (currently not used)
             });
 
+            socket.on('generate_line', function (x1, y1, x2, y2, color, width = 10) {
+                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line.setAttribute('x1', x1);
+                line.setAttribute('y1', y1);
+                line.setAttribute('x2', x2);
+                line.setAttribute('y2', y2);
+                line.setAttribute('stroke', color);
+                line.setAttribute('stroke-width', width);
+                linesContainer.appendChild(line);
+            });
+
             // Socket event listener to clear all points from the graph
-            socket.on('clear_points', function(){
+            socket.on('clear_graph', function(){
                 pointsContainer.innerHTML = ''; // Clear inner HTML of points container
+                linesContainer.innerHTML = '';
             });
 
             // Socket event listener to toggle between table and graph view

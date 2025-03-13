@@ -65,7 +65,7 @@ class StrongholdTracker:
         self.logger.info("SocketIO client connected")
         self.socketio.emit("update_values", self.values)
         self.socketio.emit("toggle_tablegraph", "table")
-        self.socketio.emit("clear_points")
+        self.socketio.emit("clear_graph")
         for i in range(1, 9):
             self.update_number(f"ring{i}", "")
 
@@ -115,6 +115,10 @@ class StrongholdTracker:
         if self.stronghold_count < 8:
             self.logger.info("Not enough strongholds to route through")
             return
+        if self.stronghold_count >= self.MAX_STRONGHOLDS:
+            self.logger.info("Path finding complete")
+            self.update_number("coords", "All portals complete!")
+            return
         sh = self.route[self.stronghold_count - 8]
         self.target_coords = (sh[0][0] // 8, sh[0][1] // 8)
 
@@ -126,12 +130,23 @@ class StrongholdTracker:
                 f"p{self.stronghold_count}",
             ),
         )
+        self.socketio.emit(
+            "generate_line",
+            (
+                sh[3][0] // 8,
+                -(sh[3][1] // 8),
+                sh[2][0] // 8,
+                -(sh[2][1] // 8),
+                sh[5],
+                15 if sh[-1] == 2 else 40,
+            ),
+        )
         self.update_number("coords", str(self.target_coords))
 
         instructions = {
             3: "Take your bed but do not set your spawnpoint at this stronghold.",
-            2: "Do not set your spawnpoint at this stronghold.",
-            1: "Leave your bed at this stronghold.",
+            2: "Do not take your bed.",
+            1: "Take your bed and leave it at this stronghold.",
             0: "Take your bed and set your spawnpoint at this stronghold.",
         }
         self.update_number("instructions", instructions.get(sh[-1], ""))
@@ -223,7 +238,7 @@ class StrongholdTracker:
                             f"{self.stronghold_count}/{self.MAX_STRONGHOLDS}",
                         )
                         self.socketio.emit("toggle_tablegraph", "table")
-                        self.socketio.emit("clear_points")
+                        self.socketio.emit("clear_graph")
                         for i in range(1, 9):
                             self.update_number(f"ring{i}", "")
         except (FileNotFoundError, KeyError):
@@ -267,6 +282,8 @@ class StrongholdTracker:
                 previous = contents
 
                 if contents == "+skip":
+                    # clear clipboard to make repeated skips easier
+                    pyperclip.copy("")
                     self.logger.info("Skipping stronghold")
                     self.stronghold_count += 1
                     self.skips += 1
