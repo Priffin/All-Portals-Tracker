@@ -1,4 +1,4 @@
-from typing import List, Tuple, Optional
+from typing import List, Tuple
 from abc import abstractmethod
 import numpy as np
 from ortools.constraint_solver import routing_enums_pb2

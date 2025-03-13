@@ -3,12 +3,12 @@ import bisect
 import json
 import time
 import threading
+import contextlib
 import numpy as np
 import pyperclip
 import requests
-import contextlib
 from flask import Flask, render_template
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO
 from route_solver import ORSolver
 
 
@@ -170,7 +170,7 @@ class StrongholdTracker:
         home_dir = os.path.expanduser("~")
         latest_world_dir = os.path.join(home_dir, "speedrunigt", "latest_world.json")
         try:
-            with open(latest_world_dir, "r") as f:
+            with open(latest_world_dir, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 return os.path.join(
                     data.get("world_path"), "speedrunigt", "record.json"
@@ -182,7 +182,7 @@ class StrongholdTracker:
     def count_strongholds(self, filepath):
         old_count = self.stronghold_count
         try:
-            with open(filepath, "r") as f:
+            with open(filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 try:
                     self.stronghold_count = (
