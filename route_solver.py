@@ -1,5 +1,6 @@
 from typing import List, Tuple
 from abc import abstractmethod
+import logging
 import numpy as np
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
@@ -95,6 +96,7 @@ class ORSolver(APSolver):
 
     @classmethod
     def solve(cls, first_8_strongholds: List[Tuple[float, float]]) -> List[List]:
+        logger = logging.getLogger("ortools_solver")
         # Estimate locations of all strongholds
         points = cls.estimate_stronghold_locations(first_8_strongholds)
 
@@ -153,7 +155,7 @@ class ORSolver(APSolver):
             route_length, route = cls.evaluate_route(
                 routing, solution, manager, distance_matrix, origin_reset_matrix
             )
-            print(f"{strategy=} {route_length=}")
+            logger.info("strategy=%s route_length=%d", strategy, route_length)
 
             if route_length < best_path[0]:
                 best_path = (route_length, route)

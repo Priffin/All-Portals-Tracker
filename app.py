@@ -3,6 +3,7 @@ import bisect
 import json
 import time
 import threading
+import logging
 import contextlib
 import numpy as np
 import pyperclip
@@ -31,6 +32,10 @@ class StrongholdTracker:
         self.app.config["SECRET_KEY"] = "secret!"
         self.socketio = SocketIO(self.app)
 
+        # Logging
+        logging.basicConfig(level=logging.INFO)
+        self.logger = logging.getLogger(__name__)
+
         # State variables
         self.ninbot_coords = None
         self.route = None
@@ -57,7 +62,7 @@ class StrongholdTracker:
         return render_template("index.html", values=self.values)
 
     def on_client_connect(self):
-        print("Client connected")
+        self.logger.info("SocketIO client connected")
         self.socketio.emit("update_values", self.values)
         self.socketio.emit("toggle_tablegraph", "table")
         self.socketio.emit("clear_points")
@@ -65,7 +70,7 @@ class StrongholdTracker:
             self.update_number(f"ring{i}", "")
 
     def on_client_disconnect(self):
-        print("Client disconnected")
+        self.logger.info("SocketIO client disconnected")
 
     def save_backup(self, filepath="all_portals_backup.json"):
         with open(filepath, "w+", encoding="utf-8") as backup_file:
@@ -101,13 +106,13 @@ class StrongholdTracker:
             ]
             self.route = ORSolver.solve(scaled_coords)
 
-            for r in self.route:
-                print(tuple(map(lambda x: int(x // 8), r[0])), r[-1])
-
             self.socketio.emit("toggle_tablegraph", "graph")
             self.next_stronghold()
 
     def next_stronghold(self):
+        if self.stronghold_count < 8:
+            self.logger.info("Not enough strongholds to route through")
+            return
         sh = self.route[self.stronghold_count - 8]
         self.target_coords = (sh[0][0] // 8, sh[0][1] // 8)
 
@@ -175,8 +180,10 @@ class StrongholdTracker:
                 return os.path.join(
                     data.get("world_path"), "speedrunigt", "record.json"
                 )
-        except Exception as e:
-            print(f"Error getting record path: {e}")
+        except (FileNotFoundError, KeyError):
+            logging.getLogger("record_monitor").error(
+                "Error getting record path", exc_info=True
+            )
             return None
 
     def count_strongholds(self, filepath):
@@ -215,10 +222,13 @@ class StrongholdTracker:
                         self.socketio.emit("clear_points")
                         for i in range(1, 9):
                             self.update_number(f"ring{i}", "")
-        except Exception as e:
-            print(f"Error counting strongholds: {e}")
+        except (FileNotFoundError, KeyError):
+            logging.getLogger("record_monitor").error(
+                "Error counting strongholds", exc_info=True
+            )
 
     def monitor_file(self):
+        logger = logging.getLogger("record_monitor")
         filepath = self.get_record_path()
         last_modified = 0
         if filepath and os.path.isfile(filepath):
@@ -237,11 +247,12 @@ class StrongholdTracker:
                     self.count_strongholds(filepath)
                     last_modified = current_modified
             except FileNotFoundError:
-                print(f"File not found: {filepath}")
+                logger.error("Record file not found", exc_info=True)
                 return
             time.sleep(0.5)
 
     def monitor_clipboard(self):
+        logger = logging.getLogger("clipboard_monitor")
         previous = pyperclip.paste()
         while True:
             time.sleep(0.1)
@@ -252,6 +263,7 @@ class StrongholdTracker:
                 previous = contents
 
                 if contents == "+skip":
+                    self.logger.info("Skipping stronghold")
                     self.stronghold_count += 1
                     self.skips += 1
                     self.update_number(
@@ -261,6 +273,7 @@ class StrongholdTracker:
                     self.next_stronghold()
 
                 if contents == "+load_backup":
+                    self.logger.info("Loading backup")
                     with contextlib.suppress(FileNotFoundError):
                         self.load_backup()
 
@@ -302,35 +315,37 @@ class StrongholdTracker:
                     )
                     self.update_number("distance", f"Distance: {round(distance)}")
 
-            except pyperclip.PyperclipException as e:
-                print(f"Error accessing clipboard: {e}")
+            except pyperclip.PyperclipException:
+                logger.error("Error accessing clipboard", exc_info=True)
                 break
             except KeyboardInterrupt:
-                print("\nExiting clipboard monitor.")
+                logger.info("Exiting clipboard monitor.", exc_info=True)
                 break
 
     def monitor_ninbot(self):
+        logger = logging.getLogger("ninbot_monitor")
         url = "http://localhost:52533/api/v1/stronghold/events"
         while True:
             try:
-                response = requests.get(url, stream=True)
+                response = requests.get(url, stream=True, timeout=10)
                 response.raise_for_status()
                 for line in response.iter_lines():
                     if line:
                         try:
                             line = json.loads(line.decode("utf-8")[6:])
-                            stronghold = line["predictions"][0]
-                            self.ninbot_coords = (
-                                stronghold["chunkX"] * 2,
-                                stronghold["chunkZ"] * 2,
+                            if line["predictions"]:
+                                stronghold = line["predictions"][0]
+                                self.ninbot_coords = (
+                                    stronghold["chunkX"] * 2,
+                                    stronghold["chunkZ"] * 2,
+                                )
+                        except (KeyError, IndexError, json.JSONDecodeError):
+                            logger.error(
+                                "Error parsing NinjabrainBot API response",
+                                exc_info=True,
                             )
-                        except Exception as e:
-                            pass
-            except requests.exceptions.RequestException as e:
-                print(f"Error connecting to event stream: {e}")
+            except requests.exceptions.RequestException:
                 time.sleep(10)
-            except Exception as e:
-                print(f"An unexpected error occurred: {e}")
 
     def start_monitoring(self):
         threads = [
