@@ -6,6 +6,7 @@ import threading
 import numpy as np
 import pyperclip
 import requests
+import contextlib
 from flask import Flask, render_template
 from flask_socketio import SocketIO, emit
 from lincolnsolver import Pathfinding
@@ -68,12 +69,13 @@ class StrongholdTracker:
 
     def save_backup(self, filepath="all_portals_backup.json"):
         with open(filepath, "w+", encoding="utf-8") as backup_file:
-            json.dump([t[1] for t in self.first_eight_strongholds], backup_file)
+            json.dump([t[1] for t in self.first_eight_strongholds], backup_file, indent=2)
 
     def load_backup(self, filepath="all_portals_backup.json"):
         with open(filepath, "r", encoding="utf-8") as backup_file:
             data = json.load(backup_file)
         for i, coords in enumerate(data[:8]):
+            coords = tuple(coords)
             self.update_number(f"ring{i+1}", str(coords))
             self.add_stronghold(coords, save=False)
 
@@ -260,7 +262,8 @@ class StrongholdTracker:
                     self.next_stronghold()
 
                 if contents == "+load_backup":
-                    self.load_backup()
+                    with contextlib.suppress(FileNotFoundError):
+                        self.load_backup()
 
                 if not contents.startswith("/execute in"):
                     continue
