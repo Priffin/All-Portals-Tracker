@@ -363,7 +363,7 @@ class PuLPRingStartSolver(APSolver):
             elapsed_time = time.time() - start_time
             iteration += 1
             logger.info(
-                "Iteration: %d" " | %.2f seconds elapsed" " | State: %s",
+                "Iteration: %d | %.2f seconds elapsed | State: %s",
                 iteration,
                 elapsed_time,
                 "Solving" if running else "Solved",
