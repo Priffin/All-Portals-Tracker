@@ -123,7 +123,7 @@ class StrongholdTracker:
             self.logger.info("Not enough strongholds to route through")
             return
         if self.stronghold_count >= self.MAX_STRONGHOLDS:
-            self.logger.info("Path finding complete")
+            self.logger.info("Path complete")
             self.update_number("coords", "All portals complete!")
             return
         sh = self.route[self.stronghold_count - 8]
