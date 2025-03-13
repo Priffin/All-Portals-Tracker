@@ -81,7 +81,7 @@ class APSolver:
         return points
 
 
-class PuLPRingStartSolver(APSolver):
+class PuLPRingStarSolver(APSolver):
     """AP Solver using MILP solver & ring-star formulation
     https://gist.github.com/Lincoln-LM/d8985c2074861adc4f27357dfcbe21ae"""
 

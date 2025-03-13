@@ -10,7 +10,7 @@ import pyperclip
 import requests
 from flask import Flask, render_template
 from flask_socketio import SocketIO
-from route_solver import ORSolver, PuLPRingStartSolver
+from route_solver import ORSolver, PuLPRingStarSolver
 
 
 class StrongholdTracker:
@@ -111,7 +111,7 @@ class StrongholdTracker:
             scaled_coords = [
                 (t[1][0] * 8, t[1][1] * 8) for t in self.first_eight_strongholds
             ]
-            self.route = PuLPRingStartSolver.solve(scaled_coords)
+            self.route = PuLPRingStarSolver.solve(scaled_coords)
 
             self.socketio.emit("toggle_tablegraph", "graph")
             self.next_stronghold()
