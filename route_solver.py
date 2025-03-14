@@ -393,17 +393,23 @@ class PuLPRingStarSolver(APSolver):
             next_is_origin_reset = next_node < cls.REAL_ROOT
             # don't need to draw the root node
             if cycle_node != cls.REAL_ROOT:
+                line_start = graph.nodes[last_node]["pos"]
+                if cycle_node in (cls.REAL_RING_1_1, cls.REAL_RING_1_2):
+                    line_start = (0, 0)
+                elif last_node == cls.REAL_ROOT:
+                    # center drawing of first node to the ring
+                    x, z = line_start
+                    angle = np.arctan2(z, x)
+                    # should always be 7th ring
+                    magnitude = sum(cls.SH_BOUNDS[7 - 1]) // 2
+                    line_start = (magnitude * np.cos(angle), magnitude * np.sin(angle))
                 parsed_strongholds.append(
                     # filler data since it is not used
                     [
                         graph.nodes[cycle_node]["pos"],
                         None,
                         graph.nodes[cycle_node]["pos"],
-                        (
-                            (0, 0)
-                            if cycle_node in (cls.REAL_RING_1_1, cls.REAL_RING_1_2)
-                            else graph.nodes[last_node]["pos"]
-                        ),
+                        line_start,
                         None,
                         "black",
                         None,
